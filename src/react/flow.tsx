@@ -1,6 +1,6 @@
 import { isFunction } from '@legendapp/state';
 import { createElement, FC, memo, ReactElement, ReactNode, useMemo, useRef } from 'react';
-import { observer } from 'react-components';
+import { observer } from '../../react-components';
 import type { Observable, ObservableObject, ObservableReadable, Selector } from '../observableInterfaces';
 import { useSelector } from './useSelector';
 
