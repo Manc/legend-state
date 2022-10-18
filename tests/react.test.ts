@@ -7,7 +7,7 @@ import { createElement, useReducer } from 'react';
 import { Observable } from 'src/observableInterfaces';
 import { observable } from '../src/observable';
 import { enableLegendStateReact } from '../src/react/enableLegendStateReact';
-import { For } from '../src/react/flow';
+import { For, ForProps } from '../src/react/flow';
 import { useSelector } from '../src/react/useSelector';
 
 describe('useSelector', () => {
@@ -130,7 +130,7 @@ describe('useSelector', () => {
         const obs = observable('hi');
         let num = 0;
         let numSelects = 0;
-        let fr;
+        let fr: () => void;
         function Test() {
             fr = useReducer((s) => s + 1, 0)[1];
             const val = useSelector(() => {
@@ -173,15 +173,21 @@ describe('useSelector', () => {
 
 describe('For', () => {
     test('Array insert has stable reference', async () => {
+        type TestObject = { id: number; label: string; };
         const obs = observable({
-            items: [{ id: 0, label: '0' }] as Array<{ id: number; label: string }>,
+            items: [{ id: 0, label: '0' }] as TestObject[],
         });
-        function Item({ item }) {
+        function Item({ item }: { item: Observable<TestObject>; }) {
             const data = useSelector(item);
             return createElement('li', { id: data.id }, data.label);
         }
         function Test() {
-            return createElement('div', { children: createElement(For, { each: obs.items, item: Item }) });
+            const props: ForProps<TestObject> = {
+                each: obs.items,
+                item: Item,
+            };
+            const forElement = createElement(For<TestObject>, props); // TODO: Find a way to avoid explicit type argument
+            return createElement('div', { children: forElement });
         }
         const { container } = render(createElement(Test));
 
@@ -198,25 +204,28 @@ describe('For', () => {
     });
     test('Array insert has stable reference 2', () => {
         enableLegendStateReact();
+        type TestObject = { id: string; label: string; };
         const obs = observable({
             items: [
                 { id: 'B', label: 'B' },
                 { id: 'A', label: 'A' },
-            ] as Array<{ id: string; label: string }>,
+            ] as TestObject[],
         });
         function Item({
             item,
         }: {
-            item: Observable<{
-                id: number;
-                label: string;
-            }>;
+            item: Observable<TestObject>;
         }) {
             const data = useSelector(item);
             return createElement('li', { id: data.id }, data.label);
         }
         function Test() {
-            return createElement('div', { children: createElement(For, { each: obs.items, item: Item }) });
+            const props: ForProps<TestObject> = {
+                each: obs.items,
+                item: Item,
+            };
+            const forElement = createElement(For<TestObject>, props); // TODO: Find a way to avoid explicit type argument
+            return createElement('div', { children: forElement });
         }
         const { container } = render(createElement(Test));
 
@@ -224,7 +233,7 @@ describe('For', () => {
         expect(items.length).toEqual(2);
 
         act(() => {
-            obs.items.splice(0, 0, { id: 'C', label: 'C' });
+            obs.items.splice(0, 0, { id: 'C', label: 'C' } as TestObject);
         });
 
         items = container.querySelectorAll('li');

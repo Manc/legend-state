@@ -1,8 +1,15 @@
 import { isFunction } from '@legendapp/state';
-import { createElement, FC, memo, ReactElement, ReactNode, useMemo, useRef } from 'react';
+import { createElement, FC, memo, ReactElement, ReactNode, Fragment, useMemo, useRef } from 'react';
 import { observer } from '../../react-components';
-import type { Observable, ObservableObject, ObservableReadable, Selector } from '../observableInterfaces';
+import type {
+    Observable,
+    ObservableObject,
+    ObservableReadable,
+    Selector,
+    TrackingTypeInternal,
+} from '../observableInterfaces';
 import { useSelector } from './useSelector';
+import { findIDKey, IDKey, IDValue } from '../globals';
 
 export function Computed({ children }: { children: () => ReactNode }): ReactElement {
     return useSelector(children, { shouldRender: true }) as ReactElement;
@@ -46,55 +53,83 @@ export function Switch<T>({
     children,
 }: {
     value: Selector<T>;
-    children?: Record<any, () => ReactNode>;
+    children: Record<any, () => ReactNode>;
 }): ReactElement {
     return (children[useSelector(value)]?.() ?? children['default']?.() ?? null) as ReactElement;
 }
 
-export function For<T extends { id: string | number } | { _id: string | number } | { __id: string | number }, TProps>({
-    each,
-    optimized,
-    item,
-    itemProps,
-    children,
-}: {
-    each?: ObservableReadable<T[]>;
-    optimized?: boolean;
-    item?: (props: { item: Observable<T> } & TProps) => ReactElement;
-    itemProps?: TProps;
-    children?: (value: Observable<T>) => ReactElement;
-}): ReactElement {
-    if (!each) return null;
+type ObjectWithSomeID = ({ id: IDValue } | { _id: IDValue } | { __id: IDValue }) & { [key in IDKey]?: IDValue };
+// type ObjectWithID<T extends IDKey> = {
+//     [key in T]: IDValue;
+// }
 
+type ForItemComponent<T> = (props: { item: Observable<T> }) => ReactElement | null;
+type ForChildrenFn<T> = (value: Observable<T>) => ReactElement | null;
+
+// export type ForProps<T extends ObjectWithID<K> = ObjectWithSomeID, K extends IDKey = 'id'> = {
+export type ForProps<T extends ObjectWithSomeID> = {
+    each: ObservableReadable<T[]>;
+    optimized?: boolean;
+    // itemProps?: TProps; // TODO: Removed `itemProps` for now to simplify typing (feature is not documented)
+} & (
+    | {
+          item: ForItemComponent<T>;
+          children?: undefined;
+      }
+    | {
+          item?: undefined;
+          children: ForChildrenFn<T>;
+      }
+);
+
+// export function For<P extends ForProps<ObjectWithSomeID>>(props: P): ReactElement<any, any> | null {
+export function For<T extends ObjectWithSomeID = any>(props: ForProps<T>): ReactElement | null {
+    const {
+        each,
+        optimized,
+        item,
+        // itemProps,
+        children,
+    } = props;
     // Get the raw value with a shallow listener so this list only re-renders
     // when the array length changes
-    const v = useSelector(() => (each as unknown as ObservableObject).get(optimized ? 'optimize' : (true as any)), {
+    const trackingType: TrackingTypeInternal = optimized ? 'optimize' : true;
+    const values = useSelector(() => each.get(trackingType as any), {
         shouldRender: true,
     });
 
-    // The child function gets wrapped in a memoized observer component
-    if (!item && children) {
-        // Update the ref so the generated component uses the latest function
-        const refChildren = useRef<(value: Observable<T>) => ReactElement>();
-        refChildren.current = children;
+    let actualItemComponent: ForItemComponent<T> | undefined;
 
-        item = useMemo(() => observer(({ item }) => refChildren.current(item)), []);
+    // The child function gets wrapped in a memoized observer component
+    if (item) {
+        actualItemComponent = item;
+    } else if (children) {
+        // Update the ref so the generated component uses the latest function
+        const refChildren = useRef<ForChildrenFn<T>>(children);
+
+        actualItemComponent = useMemo(() => observer(({ item }) => refChildren.current(item)), []);
     }
 
-    if (!v) return null;
+    if (!values || !actualItemComponent) return null;
 
     // Get the appropriate id field
-    const id = v.length > 0 ? (v[0].id ? 'id' : v[0]._id ? '_id' : v[0].__id ? '__id' : undefined) : undefined;
-
-    // Create the child elements
-    let out: ReactElement[] = [];
-    for (let i = 0; i < v.length; i++) {
-        if (v[i]) {
-            const key = v[i][id] ?? i;
-
-            out.push(createElement(item, Object.assign({ key: key, item: each[i] }, itemProps)));
-        }
+    const idKey: IDKey | undefined = findIDKey(values[0]);
+    if (!idKey) {
+        console.warn('[legend-state] Objects in array require an ID');
+        return null;
     }
 
-    return out as unknown as ReactElement;
+    // Create the child elements
+    const out = values.map<ReactElement>((itemValue, index) => {
+        const id = idKey in itemValue ? itemValue[idKey] : index;
+        const obs = (each as any)[index]; // TODO
+        const reactElement = createElement(actualItemComponent, {
+            key: id,
+            item: obs,
+        });
+        return reactElement;
+    });
+
+    return createElement(Fragment, { children: out });
+    // return out as unknown as ReactElement;
 }

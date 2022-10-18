@@ -114,3 +114,18 @@ export function shouldTreatAsOpaque(value: any) {
         }
     }
 }
+
+export type IDKey = 'id' | '_id' | '__id';
+export type IDValue = string | number;
+
+export function findIDKey(obj: {} | undefined): IDKey | undefined {
+    return obj
+        ? 'id' in obj
+            ? 'id'
+            : '_id' in obj
+                ? '_id'
+                : '__id' in obj
+                    ? '__id'
+                    : undefined
+        : undefined;
+}
