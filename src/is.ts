@@ -29,13 +29,13 @@ export function isSymbol(obj: unknown): obj is symbol {
 }
 /** @internal */
 export function isBoolean(obj: unknown): obj is boolean {
-    return obj === true || obj === false;
+    return typeof obj === 'boolean';
 }
 /** @internal */
 export function isPromise<T>(obj: unknown): obj is Promise<T> {
-    return isFunction((obj as any)?.then) && isFunction((obj as any).catch);
+    return obj instanceof Promise;
 }
-export function isEmpty(obj: object) {
+export function isEmpty(obj: object): boolean {
     return obj && Object.keys(obj).length === 0;
 }
 const setPrimitives = new Set([
