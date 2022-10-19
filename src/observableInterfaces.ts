@@ -153,7 +153,7 @@ export interface ObservablePersistRemote {
         options: PersistOptions<T>,
         onLoad: () => void,
         onChange: (obs: ObservableReadable<T>, value: any) => void
-    );
+    ): void;
 }
 
 export interface ObservablePersistState {
@@ -234,7 +234,7 @@ export type ObservablePrimitiveChild<T = any> = [T] extends [boolean]
 export type ObservableObjectOrArray<T> = T extends any[] ? ObservableArray<T> : ObservableObject<T>;
 
 export type ObservableComputed<T = any> = ObservableBaseFns<T> & ObservableComputedFnsRecursive<T>;
-export declare type Observable<T = any> = [T] extends [object] ? ObservableObjectOrArray<T> : ObservablePrimitive<T>;
+export type Observable<T = any> = [T] extends [object] ? ObservableObjectOrArray<T> : ObservablePrimitive<T>;
 
 export type ObservableReadable<T = any> =
     | ObservableBaseFns<T>

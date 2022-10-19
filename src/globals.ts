@@ -118,8 +118,8 @@ export function shouldTreatAsOpaque(value: any) {
 export type IDKey = 'id' | '_id' | '__id';
 export type IDValue = string | number;
 
-export function findIDKey(obj: {} | undefined): IDKey | undefined {
-    return obj
+export function findIDKey(obj: unknown | undefined): IDKey | undefined {
+    return isObject(obj)
         ? 'id' in obj
             ? 'id'
             : '_id' in obj

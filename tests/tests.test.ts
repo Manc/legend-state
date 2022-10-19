@@ -23,13 +23,12 @@ afterAll(() => {
 function expectChangeHandler<T>(obs: ObservableReadable<T>, track?: TrackingType) {
     const ret = jest.fn();
 
-    function handler(value, getPrev: () => any, path: string[], valueAtPath: any, prevAtPath: any) {
-        const prev = getPrev();
-
-        ret(value, prev, path, valueAtPath, prevAtPath);
-    }
-
-    obs.onChange(handler, track);
+    obs.onChange(
+        (value, getPrevious, path, valueAtPath, prevAtPath) => {
+            ret(value, getPrevious(), path, valueAtPath, prevAtPath);
+        },
+        track
+    );
 
     return ret;
 }
@@ -315,7 +314,16 @@ describe('Listeners', () => {
         );
     });
     test('Deep object set primitive undefined', () => {
-        const obs = observable({ test: { test2: { test3: 'hi' } } });
+        interface Data {
+            test: {
+                test2: {
+                    test3: string | undefined;
+                    // TODO: Make the following line work too:
+                    // test3?: string;
+                };
+            };
+        }
+        const obs = observable<Data>({ test: { test2: { test3: 'hi' } } });
         const handler = expectChangeHandler(obs);
         obs.test.test2.test3.set(undefined);
         expect(handler).toHaveBeenCalledWith(
@@ -327,7 +335,14 @@ describe('Listeners', () => {
         );
     });
     test('Deep object set undefined', () => {
-        const obs = observable({ test: { test2: { test3: 'hi' } } });
+        interface Data {
+            test: {
+                test2: {
+                    test3: string;
+                } | undefined; // TODO: Make it work as an optional property
+            };
+        }
+        const obs = observable<Data>({ test: { test2: { test3: 'hi' } } });
         const handler = expectChangeHandler(obs);
         obs.test.test2.set(undefined);
         expect(handler).toHaveBeenCalledWith(
@@ -339,7 +354,10 @@ describe('Listeners', () => {
         );
     });
     test('Start null set to something', () => {
-        const obs = observable({ test: null });
+        interface Data {
+            test: null | Record<string, string>;
+        }
+        const obs = observable<Data>({ test: null });
         const handler = expectChangeHandler(obs);
         obs.test.set({ test2: 'hi' });
         expect(handler).toHaveBeenCalledWith(
@@ -353,7 +371,10 @@ describe('Listeners', () => {
         );
     });
     test('Start undefined set to something', () => {
-        const obs = observable({ test: undefined });
+        interface Data {
+            test: undefined | Record<string, string>;
+        }
+        const obs = observable<Data>({ test: undefined });
         const handler = expectChangeHandler(obs);
         obs.test.set({ test2: 'hi' });
         expect(handler).toHaveBeenCalledWith(
@@ -367,7 +388,10 @@ describe('Listeners', () => {
         );
     });
     test('Set with object should only fire listeners once', () => {
-        const obs = observable({ test: undefined });
+        interface Data {
+            test: undefined | Record<string, string>;
+        }
+        const obs = observable<Data>({ test: undefined });
         const handler = expectChangeHandler(obs);
         obs.test.set({ test2: 'hi', test3: 'hi3', test4: 'hi4' });
         expect(handler).toHaveBeenCalledTimes(1);
@@ -429,7 +453,12 @@ describe('Listeners', () => {
         expect(handler).toHaveBeenCalledWith('hello', 'hi', [], 'hello', 'hi');
     });
     test('Set undefined deep with deep listener', () => {
-        const obs = observable({ obj: { test: 'hi' } });
+        interface Data {
+            obj: {
+                test: string | undefined;
+            }
+        }
+        const obs = observable<Data>({ obj: { test: 'hi' } });
         const handler = expectChangeHandler(obs.obj.test);
         obs.obj.test.set(undefined);
         expect(handler).toHaveBeenCalledWith(undefined, 'hi', [], undefined, 'hi');
@@ -539,16 +568,35 @@ describe('undefined', () => {
         expect(obs.test.get()).toEqual(undefined);
     });
     test('Can dot through undefined', () => {
-        const obs = observable({ test: undefined } as { test: { test2: { test3: string } } });
+        interface Data {
+            test?: {
+                test2?: {
+                    test3?: string;
+                }
+            };
+        }
+        const obs = observable<Data>({ test: undefined });
         expect(obs.test.test2.test3.get()).toEqual(undefined);
     });
     test('Can set through undefined', () => {
-        const obs = observable({ test: undefined } as { test: { test2: { test3: string } } });
+        interface Data {
+            test?: {
+                test2?: {
+                    test3?: string;
+                }
+            };
+        }
+        const obs = observable<Data>({ test: undefined });
         obs.test.test2.test3.set('hi');
         expect(obs.test.test2.test3.get()).toEqual('hi');
     });
     test('Set undefined to value and back', () => {
-        const obs = observable({ test: { test2: { test3: undefined } } });
+        // TODO: Replace `any`
+        type Data = any;
+        // type Data = {
+        //     [key: string]: string | Data | undefined;
+        // };
+        const obs = observable<Data>({ test: { test2: { test3: undefined } } });
         const handler = expectChangeHandler(obs.test);
         expect(obs.test.get()).toEqual({ test2: { test3: undefined } });
         expect(obs.test.test2.get()).toEqual({ test3: undefined });
@@ -776,19 +824,24 @@ describe('Primitives', () => {
 });
 describe('Array', () => {
     test('Basic array', () => {
-        const obs = observable({ arr: [] });
+        interface Data {
+            arr: number[];
+        }
+        const obs = observable<Data>({ arr: [] });
         expect(obs.arr.get()).toEqual([]);
         obs.arr.set([1, 2, 3]);
         expect(obs.arr.get()).toEqual([1, 2, 3]);
     });
     test('Array at root', () => {
-        const obs = observable([]);
+        type Data = number[];
+        const obs = observable<Data>([]);
         expect(obs.get()).toEqual([]);
         obs.set([1, 2, 3]);
         expect(obs.get()).toEqual([1, 2, 3]);
     });
     test('Array at root listens', () => {
-        const obs = observable([]);
+        type Data = number[];
+        const obs = observable<Data>([]);
         expect(obs.get()).toEqual([]);
         const handler = expectChangeHandler(obs);
 
@@ -852,7 +905,10 @@ describe('Array', () => {
         expect(obs.test.get()).toEqual([1, 2, 3, 4, 5]);
     });
     test('Array set', () => {
-        const obs = observable({ test: [] });
+        interface Data {
+            test: Array<{ id: number; }>;
+        }
+        const obs = observable<Data>({ test: [] });
         const arr = [];
         for (let i = 0; i < 1000; i++) {
             arr[i] = { id: i };
@@ -895,7 +951,10 @@ describe('Array', () => {
         expect(obs.test[0].get()).toEqual({ id: 5, text: 5 });
     });
     test('Array swap if empty', () => {
-        const obs = observable({ test: [] });
+        interface Data {
+            test: Array<unknown>;
+        }
+        const obs = observable<Data>({ test: [] });
         let tmp = obs.test[1];
         obs.test[1].set(obs.test[4]);
         expect(obs.test.get()).toEqual([undefined, undefined]);
@@ -911,11 +970,11 @@ describe('Array', () => {
     });
     test('Array clear if listening', () => {
         let obs = observable({ test: [{ text: 1 }, { text: 2 }, { text: 3 }, { text: 4 }, { text: 5 }] });
-        obs.test[0].onChange(() => {});
-        obs.test[1].onChange(() => {});
-        obs.test[2].onChange(() => {});
-        obs.test[3].onChange(() => {});
-        obs.test[4].onChange(() => {});
+        obs.test[0].onChange(() => { });
+        obs.test[1].onChange(() => { });
+        obs.test[2].onChange(() => { });
+        obs.test[3].onChange(() => { });
+        obs.test[4].onChange(() => { });
         obs.test.set([]);
         expect(obs.test.get()).toEqual([]);
         expect(obs.test.get()).toEqual([]);
@@ -934,11 +993,11 @@ describe('Array', () => {
             ],
         });
         const handler = expectChangeHandler(obs.test);
-        obs.test[0].onChange(() => {});
-        obs.test[1].onChange(() => {});
-        obs.test[2].onChange(() => {});
-        obs.test[3].onChange(() => {});
-        obs.test[4].onChange(() => {});
+        obs.test[0].onChange(() => { });
+        obs.test[1].onChange(() => { });
+        obs.test[2].onChange(() => { });
+        obs.test[3].onChange(() => { });
+        obs.test[4].onChange(() => { });
         obs.test.splice(0, 1);
         expect(obs.test[0].get()).toEqual({ id: 2, text: 2 });
         expect(obs.test.get()).toEqual([
@@ -1003,11 +1062,11 @@ describe('Array', () => {
         });
         const handler = jest.fn();
         obs.test.onChange(handler, true);
-        obs.test[0].onChange(() => {});
-        obs.test[1].onChange(() => {});
-        obs.test[2].onChange(() => {});
-        obs.test[3].onChange(() => {});
-        obs.test[4].onChange(() => {});
+        obs.test[0].onChange(() => { });
+        obs.test[1].onChange(() => { });
+        obs.test[2].onChange(() => { });
+        obs.test[3].onChange(() => { });
+        obs.test[4].onChange(() => { });
         obs.test.set([]);
     });
     test('Array set by index', () => {
@@ -1021,8 +1080,11 @@ describe('Array', () => {
         expect(vals).toEqual([true]);
     });
     test('Array forEach returns observables', () => {
-        const obs = observable({ arr: [{ text: 'hi' }] });
-        const arr = [];
+        interface Data {
+            arr: Array<{ text: string; }>
+        }
+        const obs = observable<Data>({ arr: [{ text: 'hi' }] });
+        const arr: unknown[] = [];
         obs.arr.forEach((a) => arr.push(isObservable(a)));
         expect(arr).toEqual([true]);
     });
@@ -1038,7 +1100,10 @@ describe('Array', () => {
         expect(handler).not.toBeCalled();
     });
     test('Array has stable reference', () => {
-        const obs = observable({ arr: [] });
+        interface Data {
+            arr: Array<{ id: string, text: string; }>;
+        }
+        const obs = observable<Data>({ arr: [] });
         obs.arr.set([
             { id: 'h1', text: 'hi' },
             { id: 'h2', text: 'hello' },
@@ -1100,7 +1165,10 @@ describe('Array', () => {
         );
     });
     test('Array has stable references 3', () => {
-        const obs = observable({ arr: [] });
+        interface Data {
+            arr: Array<{ id: string, text: string; }>;
+        }
+        const obs = observable<Data>({ arr: [] });
         obs.arr.set([
             { id: 'h1', text: 'hi' },
             { id: 'h2', text: 'h2' },
@@ -1532,7 +1600,11 @@ describe('on functions', () => {
 });
 describe('Shallow', () => {
     test('Shallow set primitive', () => {
-        const obs = observable({ val: false } as { val: boolean; val2?: number });
+        interface Data {
+            val: boolean;
+            val2?: number;
+        }
+        const obs = observable<Data>({ val: false });
         const handler = jest.fn();
         obs.onChange(handler, true);
         obs.val.set(true);
@@ -1548,7 +1620,11 @@ describe('Shallow', () => {
         expect(handler).not.toHaveBeenCalled();
     });
     test('Shallow array', () => {
-        const obs = observable({ data: [], selected: 0 });
+        interface Data {
+            data: Array<{ text: number; }>;
+            selected: number;
+        }
+        const obs = observable<Data>({ data: [], selected: 0 });
         const handler = jest.fn();
         obs.data.onChange(handler, true);
         obs.data.set([{ text: 1 }, { text: 2 }]);
@@ -1558,7 +1634,10 @@ describe('Shallow', () => {
         expect(handler).toHaveBeenCalledTimes(1);
     });
     test('Key delete notifies shallow', () => {
-        const obs = observable({ test: { key1: { text: 'hello' }, key2: { text: 'hello2' } } });
+        interface Data {
+            test: Record<string, { text: string; } | undefined>;
+        }
+        const obs = observable<Data>({ test: { key1: { text: 'hello' }, key2: { text: 'hello2' } } });
         const handler = jest.fn();
         obs.test.onChange(handler, true);
 
@@ -1577,7 +1656,10 @@ describe('Shallow', () => {
         expect(handler).toHaveBeenCalledTimes(2);
     });
     test('Array splice notifies shallow', () => {
-        const obs = observable({ arr: [{ text: 'hello' }, { text: 'hello2' }] });
+        interface Data {
+            arr: Array<{ text: string }>;
+        }
+        const obs = observable<Data>({ arr: [{ text: 'hello' }, { text: 'hello2' }] });
         const handler = jest.fn();
         const handler2 = jest.fn();
         obs.arr.onChange(handler, true);
@@ -1594,7 +1676,12 @@ describe('Shallow', () => {
         expect(handler2).toHaveBeenCalledTimes(2);
     });
     test('Shallow tracks object getting set to undefined', () => {
-        const obs = observable({ test: { text: 'hi' } });
+        interface Data {
+            test: undefined | {
+                text: string;
+            };
+        }
+        const obs = observable<Data>({ test: { text: 'hi' } });
         const handler = jest.fn();
         obs.test.onChange(handler, true);
 
@@ -1767,18 +1854,20 @@ describe('Batching', () => {
 });
 describe('Observable with promise', () => {
     test('Promise', async () => {
-        let resolver;
+        let resolver: ((value: number) => void) | undefined;
         const promise = new Promise<number>((resolve) => {
             resolver = resolve;
         });
         const obs = observable(promise);
         expect(obs.get()).toEqual(undefined);
-        resolver(10);
+        if (resolver) {
+            resolver(10);
+        }
         await promiseTimeout(0);
         expect(obs.get()).toEqual(10);
     });
     test('when with promise observable', async () => {
-        let resolver;
+        let resolver: ((value: number) => void) | undefined;
         const promise = new Promise<number>((resolve) => {
             resolver = resolve;
         });
@@ -1789,7 +1878,9 @@ describe('Observable with promise', () => {
         const fn = jest.fn();
         when(() => obs.get() === 10, fn);
 
-        resolver(10);
+        if (resolver) {
+            resolver(10);
+        }
 
         await promiseTimeout(1000);
 
@@ -1854,7 +1945,7 @@ describe('Primitive root', () => {
     });
     test('observable root can be primitive', () => {
         const obs = observable(1);
-        const node = obs[symbolGetNode];
+        const node = (obs as any)[symbolGetNode];
         expect(node.root._).toEqual(1);
     });
 });

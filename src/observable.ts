@@ -3,6 +3,7 @@ import {
     ensureNodeValue,
     extraPrimitiveActivators,
     extraPrimitiveProps,
+    findIDKey,
     get,
     getChildNode,
     getNodeValue,
@@ -13,6 +14,7 @@ import {
     symbolIsEvent,
     symbolIsObservable,
     symbolUndef,
+    IDKey,
 } from './globals';
 import { isActualPrimitive, isArray, isBoolean, isFunction, isObject, isPrimitive, isPromise } from './is';
 import { doNotify, notify } from './notify';
@@ -75,7 +77,7 @@ function collectionSetter(node: NodeValue, target: any, prop: string, ...args: a
     return ret;
 }
 
-function updateNodes(parent: NodeValue, obj: Record<any, any> | Array<any>, prevValue?: any) {
+function updateNodes(parent: NodeValue, obj: Record<any, any> | Array<any> | undefined, prevValue?: any): boolean {
     if (shouldTreatAsOpaque(obj)) {
         const isDiff = obj !== prevValue;
         if (isDiff) {
@@ -87,21 +89,20 @@ function updateNodes(parent: NodeValue, obj: Record<any, any> | Array<any>, prev
     }
     const isArr = isArray(obj);
 
-    let prevChildrenById: Map<string | number, NodeValue>;
-    let moved: [string, NodeValue][];
+    let prevChildrenById: Map<string | number, NodeValue> | undefined;
+    let moved: [string, NodeValue][] | undefined;
 
     // If array it's faster to just use the array
     const keys = isArr ? obj : obj ? Object.keys(obj) : [];
 
-    let idField: string;
+    let idField: IDKey | undefined;
 
     if (isArr && isArray(prevValue)) {
         // Construct a map of previous indices for computing move
-        if (prevValue?.length > 0) {
-            const p = prevValue[0];
-            if (p) {
-                idField =
-                    p.id !== undefined ? 'id' : p._id !== undefined ? '_id' : p.__id !== undefined ? '__id' : undefined;
+        if (prevValue.length > 0) {
+            const firstPrevValue = prevValue[0];
+            if (firstPrevValue) {
+                idField = findIDKey(firstPrevValue);
 
                 if (idField) {
                     prevChildrenById = new Map();
@@ -171,6 +172,12 @@ function updateNodes(parent: NodeValue, obj: Record<any, any> | Array<any>, prev
                             if (!child) debugger;
                             parent.children.delete(child.key);
                             child.key = key;
+                            if (!moved) {
+                                // TODO: Not sure whether `moved` it's guaranteed to be defined at this point,
+                                // so for now we define it to be absolutely sure. If this is not required,
+                                // remove this `if` block and use `moved!.push(…)` instead.
+                                moved = [];
+                            }
                             moved.push([key, child]);
                         }
 
@@ -216,6 +223,7 @@ function updateNodes(parent: NodeValue, obj: Record<any, any> | Array<any>, prev
         // If value got set to undefined, it has a diff
         return true;
     }
+    return false;
 }
 
 function getProxy(node: NodeValue, p?: string | number) {
@@ -242,7 +250,7 @@ const proxyHandler: ProxyHandler<any> = {
         const fn = objectFns.get(p);
         // If this is an observable function, call it
         if (fn) {
-            return function (a, b, c) {
+            return function (a: unknown, b: unknown, c: unknown) {
                 const l = arguments.length;
                 // Array call and apply are slow so micro-optimize this hot path.
                 // The observable functions depends on the number of arguments so we have to
@@ -413,8 +421,8 @@ function setKey(node: NodeValue, key: string | number, newValue?: any, level?: n
         !inAssign && isFunction(newValue)
             ? newValue(prevValue)
             : isObject(newValue) && newValue?.[symbolIsObservable as any]
-            ? newValue.get()
-            : newValue;
+                ? newValue.get()
+                : newValue;
 
     inSet = true;
     // Save the new value
@@ -486,14 +494,12 @@ function deleteFn(node: NodeValue, key?: string | number) {
     setKey(node, key, symbolUndef, /*level*/ -1);
 }
 
-function createObservable<T>(value, makePrimitive?: boolean) {
-    const promise = isPromise<T>(value) && value;
-    if (promise) {
-        value = undefined;
-    }
-    const root = {
-        _: promise ? undefined : value,
-    } as ObservableRoot;
+function createObservable<T>(value: T | Promise<T>, makePrimitive?: true): ObservablePrimitive<T>;
+function createObservable<T>(value: T | Promise<T>, makePrimitive?: boolean): ObservablePrimitive<T> | ObservableObjectOrArray<T> {
+    const valueIsPromise = isPromise<T>(value);
+    const root: ObservableRoot = {
+        _: valueIsPromise ? undefined : value,
+    };
 
     const node: NodeValue = {
         id: nextNodeID.current++,
@@ -505,11 +511,11 @@ function createObservable<T>(value, makePrimitive?: boolean) {
             ? (new ObservablePrimitiveClass(node) as unknown as ObservablePrimitive<T>)
             : (getProxy(node) as ObservableObjectOrArray<T>);
 
-    if (promise) {
-        promise.catch((error) => {
+    if (valueIsPromise) {
+        value.catch((error) => {
             obs.set({ error } as any);
         });
-        promise.then((value) => {
+        value.then((value) => {
             obs.set(value);
         });
     }
@@ -518,9 +524,9 @@ function createObservable<T>(value, makePrimitive?: boolean) {
 }
 
 export function observable<T>(value?: T | Promise<T>): Observable<T> {
-    return createObservable(value) as any;
+    return createObservable(value) as Observable<T>;
 }
 
 export function observablePrimitive<T>(value?: T | Promise<T>): ObservablePrimitive<T> {
-    return createObservable(value, /*makePrimitive*/ true) as ObservablePrimitive<T>;
+    return createObservable(value, /*makePrimitive*/ true);
 }
